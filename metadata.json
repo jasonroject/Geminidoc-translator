@@ -1,0 +1,8 @@
+{
+  "name": "Remix GeminiDoc Translator - 专业级双语PDF翻译与智能工作流",
+  "description": "基于Gemini设计美学的专业级多语言PDF双语对照翻译平台，集成智能OCR、重点词汇高亮、一键双语导出、文档摘要与多端云同步。",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

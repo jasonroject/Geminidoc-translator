@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GeminiDoc Translator - 专业级双语PDF翻译与智能工作流</title>
+    <meta name="description" content="基于Gemini设计美学的专业级多语言PDF双语对照翻译平台，集成智能OCR、重点词汇高亮、一键双语导出、文档摘要与多端云同步。" />
+    <meta property="og:title" content="GeminiDoc Translator - 专业级双语PDF翻译与智能工作流" />
+    <meta property="og:description" content="基于Gemini设计美学的专业级多语言PDF双语对照翻译平台，集成智能OCR、重点词汇高亮、一键双语导出、文档摘要与多端云同步。" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+    </script>
+  </head>
+  <body class="bg-[#0e0f12] text-[#e3e3e3] antialiased selection:bg-blue-500/30 selection:text-blue-200">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
