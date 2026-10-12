@@ -12,6 +12,7 @@ import {
   Segment,
   TranslationEngineConfig,
   CustomAiConfig,
+  PresentationStyle,
 } from './types';
 import { storageService } from './services/storageService';
 import { apiService } from './services/api';
@@ -47,6 +48,16 @@ export default function App() {
   // Layout mode: side_by_side (左右对照) | interlinear (段落交替) | target_only | source_only
   const [viewerMode, setViewerMode] = useState<ViewerLayoutMode>('side_by_side');
   const [syncScroll, setSyncScroll] = useState<boolean>(true);
+
+  // Presentation style: 'article' (连贯文章流) | 'cards' (结构化分段卡片)
+  const [presentationStyle, setPresentationStyle] = useState<PresentationStyle>(() =>
+    storageService.getPresentationStyle()
+  );
+
+  const handleSetPresentationStyle = (style: PresentationStyle) => {
+    setPresentationStyle(style);
+    storageService.setPresentationStyle(style);
+  };
 
   // Translation Engine
   const [activeEngine, setActiveEngine] = useState<TranslationEngineConfig>(
@@ -312,13 +323,17 @@ export default function App() {
       let segments: Segment[] = [];
       let pageCount = 1;
       let isScanned = false;
+      let firstPageImage: string | undefined = undefined;
+      let pdfBlobUrl: string | undefined = undefined;
 
       if (file.name.toLowerCase().endsWith('.pdf')) {
+        pdfBlobUrl = URL.createObjectURL(file);
         const parsed = await pdfExtractor.parsePdfFile(file);
         title = parsed.title;
         segments = parsed.segments;
         pageCount = parsed.pageCount;
         isScanned = !!parsed.isScannedImageDoc;
+        firstPageImage = parsed.firstPageImageBase64;
       } else {
         const parsed = await pdfExtractor.parseTextFile(file);
         title = parsed.title;
@@ -343,6 +358,8 @@ export default function App() {
         targetLang: activeDoc?.targetLang || 'zh-CN',
         engineUsed: activeEngine.id,
         isOfflineCached: true,
+        pdfBlobUrl,
+        pdfPageImages: firstPageImage ? [firstPageImage] : undefined,
         segments,
         glossary: [],
       };
@@ -353,10 +370,9 @@ export default function App() {
       storageService.setActiveDocId(newDoc.id);
 
       if (isScanned) {
-        showToast('检测到该 PDF 疑似图片扫描件，推荐使用 OCR 智能识别模式');
-        setIsOcrModalOpen(true);
+        showToast(`已成功导入 PDF《${title}》，如纯图片需文字识别可在工具栏点击截图识别`);
       } else {
-        showToast(`已成功导入 ${segments.length} 个段落，点击"开始翻译"即可双语对照！`);
+        showToast(`✅ 已直接导入 PDF《${title}》（共 ${segments.length} 段），点击【一键翻译全文】即可立即完成双语对照！`);
       }
     } catch (err: any) {
       showToast(`文件解析失败: ${err.message}`);
@@ -535,6 +551,8 @@ export default function App() {
         onOpenEngineModal={() => setIsEngineModalOpen(true)}
         viewerMode={viewerMode}
         onChangeViewerMode={setViewerMode}
+        presentationStyle={presentationStyle}
+        onChangePresentationStyle={handleSetPresentationStyle}
         syncScroll={syncScroll}
         onToggleSyncScroll={() => setSyncScroll(!syncScroll)}
         isTranslating={isTranslating}
@@ -543,6 +561,7 @@ export default function App() {
         activeEngine={activeEngine}
         isSearchOpen={isSearchOpen}
         onToggleSearch={() => setIsSearchOpen((prev) => !prev)}
+        onUploadFile={handleUploadFile}
       />
 
       {/* Main Dual Pane Viewer */}
@@ -550,6 +569,8 @@ export default function App() {
         <DualPaneViewer
           document={activeDoc}
           viewerMode={viewerMode}
+          presentationStyle={presentationStyle}
+          onChangePresentationStyle={handleSetPresentationStyle}
           syncScroll={syncScroll}
           activeSegmentId={activeSegmentId}
           onSelectSegment={(id) => setActiveSegmentId(id)}
@@ -560,6 +581,8 @@ export default function App() {
           }}
           onTranslateSingleSegment={handleTranslateSingleSegment}
           onUploadFile={handleUploadFile}
+          onStartTranslateAll={handleStartTranslateAll}
+          isTranslating={isTranslating}
           onOpenSummaryModal={() => setIsSummaryModalOpen(true)}
           onRegenerateSummary={handleRegenerateSummary}
           isGeneratingSummary={isGeneratingSummary}
@@ -628,6 +651,7 @@ export default function App() {
         onToggleStar={handleToggleStar}
         onDeleteDoc={handleDeleteDoc}
         onRenameDoc={handleRenameDoc}
+        onUploadFile={handleUploadFile}
       />
 
       {/* Cloud Sync & Cross-Platform Passkey Modal */}

@@ -83,6 +83,8 @@ export interface TranslationDocument {
   summary?: DocumentSummary;
   ocrConfidence?: number;
   isOfflineCached?: boolean;
+  pdfBlobUrl?: string;
+  pdfPageImages?: string[];
 }
 
 export interface CustomAiConfig {
@@ -105,7 +107,9 @@ export interface TranslationEngineConfig {
   provider?: 'gemini' | 'bing' | 'custom-ai';
 }
 
-export type ViewerLayoutMode = 'side_by_side' | 'interlinear' | 'target_only' | 'source_only';
+export type ViewerLayoutMode = 'side_by_side' | 'interlinear' | 'target_only' | 'source_only' | 'pdf_visual_mirror';
+
+export type PresentationStyle = 'article' | 'cards';
 
 export interface BatchUploadItem {
   id: string;

@@ -4,6 +4,7 @@ import {
   GlossaryTerm,
   ViewerLayoutMode,
   TranslationDocument,
+  PresentationStyle,
 } from '../types';
 import {
   Copy,
@@ -26,12 +27,18 @@ import {
   Info,
   Search,
   X,
+  Zap,
+  Layers,
 } from 'lucide-react';
 import { GeminiStarIcon, GeminiBrandBadge, ColoredFeatureIcon } from './GeminiIcon';
+import { PdfVisualMirrorViewer } from './PdfVisualMirrorViewer';
 
 interface DualPaneViewerProps {
   document: TranslationDocument;
   viewerMode: ViewerLayoutMode;
+  onChangeViewerMode?: (mode: ViewerLayoutMode) => void;
+  presentationStyle?: PresentationStyle;
+  onChangePresentationStyle?: (style: PresentationStyle) => void;
   syncScroll: boolean;
   activeSegmentId: string | null;
   onSelectSegment: (id: string) => void;
@@ -39,6 +46,8 @@ interface DualPaneViewerProps {
   onSelectGlossaryTerm: (term: GlossaryTerm) => void;
   onTranslateSingleSegment: (segment: Segment) => void;
   onUploadFile: (file: File) => void;
+  onStartTranslateAll?: () => void;
+  isTranslating?: boolean;
   onOpenSummaryModal?: () => void;
   onRegenerateSummary?: () => Promise<void>;
   isGeneratingSummary?: boolean;
@@ -49,6 +58,9 @@ interface DualPaneViewerProps {
 export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
   document,
   viewerMode,
+  onChangeViewerMode,
+  presentationStyle = 'article',
+  onChangePresentationStyle,
   syncScroll,
   activeSegmentId,
   onSelectSegment,
@@ -56,6 +68,8 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
   onSelectGlossaryTerm,
   onTranslateSingleSegment,
   onUploadFile,
+  onStartTranslateAll,
+  isTranslating = false,
   onOpenSummaryModal,
   onRegenerateSummary,
   isGeneratingSummary = false,
@@ -65,6 +79,7 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
   const leftPaneRef = useRef<HTMLDivElement>(null);
   const rightPaneRef = useRef<HTMLDivElement>(null);
   const interlinearRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Synchronized scrolling management refs
   const isSyncingRef = useRef(false);
@@ -98,6 +113,7 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
     y: number;
   } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(null);
   const [isSummaryExpanded, setIsSummaryExpanded] = useState<boolean>(true);
   const [copiedSummary, setCopiedSummary] = useState(false);
 
@@ -117,6 +133,20 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
       setInternalSearchOpen((prev) => !prev);
     }
   };
+
+  // Translation stats
+  const untranslatedCount = useMemo(
+    () =>
+      document.segments.filter(
+        (s) => !s.translated || !s.translated.trim() || s.translated.startsWith('[离线')
+      ).length,
+    [document.segments]
+  );
+  const translatedCount = document.segments.length - untranslatedCount;
+  const translationPercentage =
+    document.segments.length > 0
+      ? Math.round((translatedCount / document.segments.length) * 100)
+      : 0;
 
   // Compute matching segment IDs based on query and search scope
   const matchedSegmentIds = useMemo(() => {
@@ -472,6 +502,19 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
         isDragOver ? 'ring-2 ring-blue-500 ring-inset bg-blue-500/5' : ''
       }`}
     >
+      {/* Root Direct PDF / Document File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.txt,.md"
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) {
+            onUploadFile(e.target.files[0]);
+            e.target.value = '';
+          }
+        }}
+        className="hidden"
+      />
       {/* Drag & drop overlay indicator */}
       {isDragOver && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
@@ -510,6 +553,68 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
           <div className="mt-2 text-[10px] text-muted-foreground/80 border-t border-border/50 pt-1.5 flex items-center justify-between">
             <span>点击查看完整词条或添加笔记</span>
             <ChevronRight className="h-3 w-3 text-muted-foreground" />
+          </div>
+        </div>
+      )}
+
+      {/* Live Translating Progress Bar across top of viewer */}
+      {isTranslating && (
+        <div className="h-1.5 w-full bg-blue-950/50 overflow-hidden shrink-0 z-20">
+          <div
+            className="h-full bg-gradient-to-r from-blue-500 via-indigo-400 to-purple-500 transition-all duration-300"
+            style={{ width: `${Math.max(8, translationPercentage)}%` }}
+          />
+        </div>
+      )}
+
+      {/* Full-Document One-Click Translate Prominent Action Banner */}
+      {(untranslatedCount > 0 || isTranslating) && onStartTranslateAll && (
+        <div className="shrink-0 border-b border-indigo-500/20 bg-gradient-to-r from-blue-500/10 via-indigo-500/15 to-purple-500/10 px-3.5 sm:px-6 py-2.5 backdrop-blur-xs flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-500/20 text-blue-400 shrink-0">
+              <Zap className={`h-4 w-4 ${isTranslating ? 'animate-bounce text-amber-300' : 'text-blue-400'}`} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-foreground">
+                  {isTranslating
+                    ? `正在为您进行一键全文翻译 (已完成 ${translatedCount}/${document.segments.length} 段 · ${translationPercentage}%)`
+                    : `当前文档共 ${document.segments.length} 段，尚有 ${untranslatedCount} 个段落待翻译`}
+                </span>
+                {!isTranslating && (
+                  <span className="rounded-md bg-blue-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300">
+                    一键自动通篇对照
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground truncate">
+                {isTranslating
+                  ? 'AI 正在自动批量推进全篇双语对照，无需人工逐段操作...'
+                  : '无需逐段点击，点击右侧【一键翻译全文】按钮，系统将自动批量完成整篇文档的双语对照'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="hidden sm:flex items-center gap-1 rounded-xl bg-card/80 border border-border/80 px-2.5 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+              title="直接打开电脑上的本地 PDF 文件进行翻译（免OCR）"
+            >
+              <FileUp className="h-3 w-3 text-cyan-400" />
+              <span>导入其他PDF</span>
+            </button>
+            <button
+              onClick={onStartTranslateAll}
+              disabled={isTranslating}
+              className="flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-500/30 hover:opacity-95 disabled:opacity-60 transition-all shrink-0 active:scale-98 cursor-pointer"
+              style={{
+                background: 'linear-gradient(135deg, #1A73E8 0%, #4F46E5 35%, #9333EA 70%, #EC4899 100%)',
+              }}
+            >
+              <Sparkles className={`h-3.5 w-3.5 ${isTranslating ? 'animate-spin' : ''}`} />
+              <span>{isTranslating ? `正在翻译 (${translationPercentage}%)` : '⚡ 立即一键翻译全文'}</span>
+            </button>
           </div>
         </div>
       )}
@@ -571,6 +676,27 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
                     <span className="hidden sm:inline">深度分析</span>
                   </button>
                 )}
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-blue-400 hover:bg-blue-500/15 border border-blue-500/30 transition-colors"
+                  title="导入新 PDF 或文档进行翻译"
+                >
+                  <FileUp className="h-3 w-3" />
+                  <span className="hidden sm:inline">导入新PDF</span>
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,.txt,.md"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      onUploadFile(e.target.files[0]);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="hidden"
+                />
 
                 <button
                   onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
@@ -795,8 +921,60 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
         </div>
       )}
 
+      {/* Mode Switcher Banner: 🔤 文本双语段落流 vs 📄 原版 PDF 与排版对照 (新增模块) */}
+      <div className="shrink-0 flex items-center justify-between px-3 sm:px-6 py-2 border-b border-border/70 bg-card/80 backdrop-blur-md text-xs z-10">
+        <div className="flex items-center gap-1.5 bg-muted/80 p-0.5 rounded-xl border border-border/70">
+          <button
+            onClick={() => onChangeViewerMode && onChangeViewerMode('side_by_side')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+              viewerMode !== 'pdf_visual_mirror'
+                ? 'bg-card text-foreground font-semibold shadow-xs'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            <span>🔤 文本双语段落流</span>
+          </button>
+          <button
+            onClick={() => onChangeViewerMode && onChangeViewerMode('pdf_visual_mirror')}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-medium transition-all ${
+              viewerMode === 'pdf_visual_mirror'
+                ? 'bg-blue-600 text-white font-semibold shadow-xs'
+                : 'text-blue-500 hover:text-blue-600 hover:bg-blue-500/10'
+            }`}
+          >
+            <span>📄 原版 PDF 与排版对照</span>
+            <span className="text-[10px] bg-gradient-to-r from-amber-400 to-pink-500 text-black px-1.5 py-0.5 rounded-full font-bold leading-none shadow-2xs">
+              新增模块
+            </span>
+          </button>
+        </div>
+
+        <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+          {viewerMode === 'pdf_visual_mirror' ? (
+            <span className="text-[11px] text-cyan-400 font-medium">
+              💡 当前为真实 PDF 页面镜像对照：左侧查看原版 PDF 视觉版面，右侧查看排版后的译文
+            </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground">
+              💡 鼠标移至段落可查看动态彩虹炫彩边框；点击即可中英双语对齐联动
+            </span>
+          )}
+        </div>
+      </div>
+
       {/* Main Content Area based on viewerMode */}
       <div className="flex-1 overflow-hidden">
+      {viewerMode === 'pdf_visual_mirror' && (
+        <PdfVisualMirrorViewer
+          document={document}
+          onUploadFile={onUploadFile}
+          onStartTranslateAll={onStartTranslateAll}
+          isTranslating={isTranslating}
+          onUpdateSegment={onUpdateSegment}
+          onSwitchToParagraphMode={() => onChangeViewerMode && onChangeViewerMode('side_by_side')}
+        />
+      )}
+
       {viewerMode === 'side_by_side' && (
         <div className="grid h-full grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
           {/* Left Column: Source Text */}
@@ -819,91 +997,240 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
                     原文文档 ({document.sourceLang})
                   </h2>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  共 {document.segments.length} 个语义段落
-                </span>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    共 {document.segments.length} 个语义段落
+                  </span>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 px-2.5 py-1 text-xs font-semibold text-white shadow-xs transition-all active:scale-98 cursor-pointer"
+                    title="点击直接导入本地 PDF 文档进行翻译（免 OCR，自动解析排版）"
+                  >
+                    <FileUp className="h-3.5 w-3.5" />
+                    <span>📥 导入本地 PDF</span>
+                  </button>
+                </div>
               </div>
 
-              {document.segments.map((segment, index) => {
-                const isActive = activeSegmentId === segment.id;
-                const isMatchedSeg = matchedSegmentIds.includes(segment.id);
-                const isCurrentFocus =
-                  matchedSegmentIds.length > 0 &&
-                  matchedSegmentIds[currentMatchIndex] === segment.id;
+              {document.segments.length === 0 && (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-2xl border-2 border-dashed border-blue-500/30 hover:border-blue-500/60 bg-blue-500/5 p-8 text-center cursor-pointer transition-all space-y-3 my-6"
+                >
+                  <FileUp className="h-10 w-10 text-blue-400 mx-auto" />
+                  <div className="text-sm font-semibold text-foreground">点击或拖拽上传本地 PDF 文件</div>
+                  <p className="text-xs text-muted-foreground">
+                    直接选择电脑上的 PDF 文档，系统将自动分段解析并开启双语对照翻译
+                  </p>
+                </div>
+              )}
 
-                return (
-                  <div
-                    key={segment.id}
-                    id={`seg-item-src-${segment.id}`}
-                    data-segment-id={segment.id}
-                    onClick={() => onSelectSegment(segment.id)}
-                    className={`group relative rounded-xl p-4 transition-all duration-150 cursor-pointer ${
-                      isCurrentFocus
-                        ? 'bg-amber-500/15 ring-2 ring-amber-400 shadow-md shadow-amber-500/10'
-                        : isActive
-                        ? 'bg-blue-500/10 ring-1 ring-blue-500/40 shadow-sm'
-                        : isMatchedSeg
-                        ? 'bg-amber-500/5 ring-1 ring-amber-500/30'
-                        : 'hover:bg-accent/40 bg-card/40 border border-border/40'
-                    }`}
-                  >
-                    {/* Segment header pill */}
-                    <div className="flex items-center justify-between gap-1.5 text-[11px] text-muted-foreground mb-1.5 min-w-0">
-                      <div className="flex items-center gap-1.5 font-mono flex-wrap min-w-0">
-                        <span className="shrink-0">#{index + 1} · 第 {segment.pageNumber} 页</span>
-                        {isMatchedSeg && (
-                          <span className={`rounded-md px-1.5 py-0.5 text-[10px] leading-none shrink-0 ${
-                            isCurrentFocus
-                              ? 'bg-amber-400 text-black font-bold'
-                              : 'bg-amber-500/20 text-amber-300 font-medium'
-                          }`}>
-                            匹配命中
-                          </span>
+              {/* Source Segments: Article Flow vs Segment Cards */}
+              {presentationStyle === 'article' ? (
+                /* Continuous Article Flow: Seamless reading with bottom fluorescent neon glow */
+                <div className="space-y-3.5">
+                  {document.segments.map((segment, index) => {
+                    const isActive = activeSegmentId === segment.id;
+                    const isHovered = hoveredSegmentId === segment.id;
+                    const isMatchedSeg = matchedSegmentIds.includes(segment.id);
+                    const isCurrentFocus =
+                      matchedSegmentIds.length > 0 &&
+                      matchedSegmentIds[currentMatchIndex] === segment.id;
+
+                    return (
+                      <div
+                        key={segment.id}
+                        id={`seg-item-src-${segment.id}`}
+                        data-segment-id={segment.id}
+                        onClick={() => onSelectSegment(segment.id)}
+                        onMouseEnter={() => setHoveredSegmentId(segment.id)}
+                        onMouseLeave={() => setHoveredSegmentId(null)}
+                        className={`group relative rounded-xl px-3.5 py-3 transition-all duration-200 cursor-pointer overflow-hidden border-l-2 ${
+                          isActive
+                            ? 'rainbow-border-active bg-white dark:bg-[#090b14] border-l-cyan-400 dark:border-l-cyan-400 ring-1 ring-cyan-500/40 shadow-md dark:shadow-[0_8px_30px_-4px_rgba(6,182,212,0.35)]'
+                            : isHovered
+                            ? 'rainbow-border-hover bg-slate-50/90 dark:bg-[#070910] border-l-cyan-500/70 dark:border-l-cyan-500/70 ring-1 ring-cyan-500/25 shadow-xs dark:shadow-[0_4px_18px_-2px_rgba(6,182,212,0.22)]'
+                            : isCurrentFocus
+                            ? 'bg-amber-500/15 border-l-amber-400 shadow-xs'
+                            : isMatchedSeg
+                            ? 'bg-amber-500/5 border-l-amber-500/40'
+                            : 'border-l-transparent hover:border-l-cyan-500/30 hover:bg-slate-50/70 dark:hover:bg-[#07080e]'
+                        }`}
+                      >
+                        {segment.type === 'title' ? (
+                          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground pb-2 border-b border-border/40">
+                            {renderHighlightedContent(segment.original, document.glossary, true, segment.id)}
+                          </h1>
+                        ) : segment.type === 'heading' ? (
+                          <h2 className="text-base sm:text-lg font-semibold text-foreground pt-1.5">
+                            {renderHighlightedContent(segment.original, document.glossary, true, segment.id)}
+                          </h2>
+                        ) : (
+                          <p className="text-[14px] sm:text-[15px] leading-relaxed text-foreground/90">
+                            {renderHighlightedContent(segment.original, document.glossary, true, segment.id)}
+                          </p>
+                        )}
+
+                        {/* Subtle Floating Paragraph Toolbar on Hover */}
+                        <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-card/95 px-1.5 py-0.5 rounded-md border border-border/60 shadow-xs z-10">
+                          {(isActive || isHovered) && (
+                            <span className="text-[10px] text-cyan-400 font-medium mr-1 hidden sm:inline">
+                              ⟷ 右侧译文对齐
+                            </span>
+                          )}
+                          <span className="text-[10px] text-muted-foreground font-mono mr-1">#{index + 1}</span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              speakText(segment.original, document.sourceLang);
+                            }}
+                            className="p-1 hover:text-foreground text-muted-foreground rounded"
+                            title="发音朗读"
+                          >
+                            <Volume2 className="h-3 w-3" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyToClipboard(segment.original, `src-${segment.id}`);
+                            }}
+                            className="p-1 hover:text-foreground text-muted-foreground rounded"
+                            title="复制原文"
+                          >
+                            {copiedId === `src-${segment.id}` ? (
+                              <Check className="h-3 w-3 text-emerald-400" />
+                            ) : (
+                              <Copy className="h-3 w-3" />
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Bottom Fluorescent Neon Glow Light & Underglow Effect (Only in dark mode) */}
+                        {isActive && (
+                          <>
+                            <div className="hidden dark:block absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-cyan-500/25 via-teal-500/10 to-transparent pointer-events-none rounded-b-xl" />
+                            <div className="hidden dark:block fluorescent-glow-line" />
+                          </>
+                        )}
+                        {isHovered && !isActive && (
+                          <>
+                            <div className="hidden dark:block absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-cyan-500/15 to-transparent pointer-events-none rounded-b-xl" />
+                            <div className="hidden dark:block fluorescent-glow-line-hover" />
+                          </>
                         )}
                       </div>
-                      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            speakText(segment.original, document.sourceLang);
-                          }}
-                          className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
-                          title="发音朗读"
-                        >
-                          <Volume2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            copyToClipboard(segment.original, `src-${segment.id}`);
-                          }}
-                          className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
-                          title="复制原文"
-                        >
-                          {copiedId === `src-${segment.id}` ? (
-                            <Check className="h-3.5 w-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Card Segments Mode */
+                <div className="space-y-6">
+                  {document.segments.map((segment, index) => {
+                    const isActive = activeSegmentId === segment.id;
+                    const isHovered = hoveredSegmentId === segment.id;
+                    const isMatchedSeg = matchedSegmentIds.includes(segment.id);
+                    const isCurrentFocus =
+                      matchedSegmentIds.length > 0 &&
+                      matchedSegmentIds[currentMatchIndex] === segment.id;
 
-                    {/* Segment content */}
-                    <div
-                      className={`text-sm leading-relaxed ${
-                        segment.type === 'title'
-                          ? 'text-lg font-bold text-foreground'
-                          : segment.type === 'heading'
-                          ? 'text-base font-semibold text-foreground'
-                          : 'text-foreground/90'
-                      }`}
-                    >
-                      {renderHighlightedContent(segment.original, document.glossary, true, segment.id)}
-                    </div>
-                  </div>
-                );
-              })}
+                    return (
+                      <div
+                        key={segment.id}
+                        id={`seg-item-src-${segment.id}`}
+                        data-segment-id={segment.id}
+                        onClick={() => onSelectSegment(segment.id)}
+                        onMouseEnter={() => setHoveredSegmentId(segment.id)}
+                        onMouseLeave={() => setHoveredSegmentId(null)}
+                        className={`group relative rounded-xl p-4 transition-all duration-200 cursor-pointer overflow-hidden ${
+                          isActive
+                            ? 'rainbow-border-active bg-white dark:bg-[#090b14] ring-1 ring-cyan-400/50 shadow-md dark:shadow-[0_8px_30px_-4px_rgba(6,182,212,0.35)]'
+                            : isHovered
+                            ? 'rainbow-border-hover bg-slate-50/90 dark:bg-[#070910] ring-1 ring-cyan-500/30 shadow-xs dark:shadow-[0_4px_18px_-2px_rgba(6,182,212,0.22)]'
+                            : isCurrentFocus
+                            ? 'bg-amber-500/15 ring-2 ring-amber-400 shadow-md shadow-amber-500/10'
+                            : isMatchedSeg
+                            ? 'bg-amber-500/5 ring-1 ring-amber-500/30'
+                            : 'bg-card border border-border/60 hover:bg-slate-50/70 dark:hover:bg-[#07080e]'
+                        }`}
+                      >
+                        {/* Segment header pill */}
+                        <div className="flex items-center justify-between gap-1.5 text-[11px] text-muted-foreground mb-2 min-w-0">
+                          <div className="flex items-center gap-1.5 font-mono flex-wrap min-w-0">
+                            <span className="shrink-0">#{index + 1} · 第 {segment.pageNumber} 页</span>
+                            {(isActive || isHovered) && (
+                              <span className="rounded-md bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-400 font-semibold leading-none shrink-0">
+                                ⟷ 右侧译文对齐
+                              </span>
+                            )}
+                            {isMatchedSeg && (
+                              <span className={`rounded-md px-1.5 py-0.5 text-[10px] leading-none shrink-0 ${
+                                isCurrentFocus
+                                  ? 'bg-amber-400 text-black font-bold'
+                                  : 'bg-amber-500/20 text-amber-300 font-medium'
+                              }`}>
+                                匹配命中
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                speakText(segment.original, document.sourceLang);
+                              }}
+                              className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                              title="发音朗读"
+                            >
+                              <Volume2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                copyToClipboard(segment.original, `src-${segment.id}`);
+                              }}
+                              className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                              title="复制原文"
+                            >
+                              {copiedId === `src-${segment.id}` ? (
+                                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                              ) : (
+                                <Copy className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Segment content */}
+                        <div
+                          className={`text-sm leading-relaxed ${
+                            segment.type === 'title'
+                              ? 'text-lg font-bold text-foreground'
+                              : segment.type === 'heading'
+                              ? 'text-base font-semibold text-foreground'
+                              : 'text-foreground/90'
+                          }`}
+                        >
+                          {renderHighlightedContent(segment.original, document.glossary, true, segment.id)}
+                        </div>
+
+                        {/* Bottom Fluorescent Neon Glow Light & Underglow Effect (Only in dark mode) */}
+                        {isActive && (
+                          <>
+                            <div className="hidden dark:block absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-cyan-500/25 via-teal-500/10 to-transparent pointer-events-none rounded-b-xl" />
+                            <div className="hidden dark:block fluorescent-glow-line" />
+                          </>
+                        )}
+                        {isHovered && !isActive && (
+                          <>
+                            <div className="hidden dark:block absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-cyan-500/15 to-transparent pointer-events-none rounded-b-xl" />
+                            <div className="hidden dark:block fluorescent-glow-line-hover" />
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
 
@@ -928,81 +1255,144 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
                   </h2>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    已翻译 {document.segments.filter((s) => s.translated).length} / {document.segments.length}
+                  {onStartTranslateAll && (
+                    <button
+                      onClick={onStartTranslateAll}
+                      disabled={isTranslating}
+                      className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold text-white shadow-md shadow-blue-500/25 transition-all disabled:opacity-60 cursor-pointer"
+                      style={{
+                        background: 'linear-gradient(135deg, #1A73E8 0%, #4F46E5 35%, #9333EA 70%, #EC4899 100%)',
+                      }}
+                      title="一键自动翻译全篇所有未翻译段落"
+                    >
+                      <Sparkles className={`h-3 w-3 ${isTranslating ? 'animate-spin' : ''}`} />
+                      <span>{isTranslating ? `翻译中 (${translationPercentage}%)` : '⚡ 一键翻译全文'}</span>
+                    </button>
+                  )}
+                  <span className="text-xs text-muted-foreground hidden sm:inline">
+                    已翻译 {translatedCount} / {document.segments.length}
                   </span>
                 </div>
               </div>
 
-              {document.segments.map((segment, index) => {
-                const isActive = activeSegmentId === segment.id;
-                const isEditing = editingSegmentId === segment.id;
-                const hasTranslation = segment.translated && segment.translated.trim().length > 0;
-                const isMatchedSeg = matchedSegmentIds.includes(segment.id);
-                const isCurrentFocus =
-                  matchedSegmentIds.length > 0 &&
-                  matchedSegmentIds[currentMatchIndex] === segment.id;
+              {/* Translated Segments: Article Flow vs Segment Cards */}
+              {presentationStyle === 'article' ? (
+                /* Continuous Article Flow for Translated Text */
+                <div className="space-y-3.5">
+                  {document.segments.map((segment, index) => {
+                    const isActive = activeSegmentId === segment.id;
+                    const isHovered = hoveredSegmentId === segment.id;
+                    const isEditing = editingSegmentId === segment.id;
+                    const hasTranslation = segment.translated && segment.translated.trim().length > 0;
+                    const isMatchedSeg = matchedSegmentIds.includes(segment.id);
+                    const isCurrentFocus =
+                      matchedSegmentIds.length > 0 &&
+                      matchedSegmentIds[currentMatchIndex] === segment.id;
 
-                return (
-                  <div
-                    key={segment.id}
-                    id={`seg-item-trans-${segment.id}`}
-                    data-segment-id={segment.id}
-                    onClick={() => onSelectSegment(segment.id)}
-                    className={`group relative rounded-xl p-4 transition-all duration-150 cursor-pointer ${
-                      isCurrentFocus
-                        ? 'bg-amber-500/15 ring-2 ring-amber-400 shadow-md shadow-amber-500/10'
-                        : isActive
-                        ? 'bg-blue-500/10 ring-1 ring-blue-500/50 shadow-md shadow-blue-500/5'
-                        : isMatchedSeg
-                        ? 'bg-amber-500/5 ring-1 ring-amber-500/30'
-                        : 'hover:bg-accent/40 bg-card border border-border/50'
-                    }`}
-                  >
-                    {/* Segment header pill */}
-                    <div className="flex items-center justify-between gap-1.5 text-[11px] text-muted-foreground mb-1.5 min-w-0">
-                      <div className="flex items-center gap-1.5 font-mono flex-wrap min-w-0">
-                        <span className="shrink-0">#{index + 1}</span>
-                        {isMatchedSeg && (
-                          <span className={`rounded-md px-1.5 py-0.5 text-[10px] leading-none shrink-0 ${
-                            isCurrentFocus
-                              ? 'bg-amber-400 text-black font-bold'
-                              : 'bg-amber-500/20 text-amber-300 font-medium'
-                          }`}>
-                            匹配命中
-                          </span>
+                    return (
+                      <div
+                        key={segment.id}
+                        id={`seg-item-trans-${segment.id}`}
+                        data-segment-id={segment.id}
+                        onClick={() => onSelectSegment(segment.id)}
+                        onMouseEnter={() => setHoveredSegmentId(segment.id)}
+                        onMouseLeave={() => setHoveredSegmentId(null)}
+                        className={`group relative rounded-xl px-3.5 py-3 transition-all duration-200 cursor-pointer overflow-hidden border-l-2 ${
+                          isActive
+                            ? 'rainbow-border-active bg-white dark:bg-[#090b14] border-l-cyan-400 dark:border-l-cyan-400 ring-1 ring-cyan-500/40 shadow-md dark:shadow-[0_8px_30px_-4px_rgba(6,182,212,0.35)]'
+                            : isHovered
+                            ? 'rainbow-border-hover bg-slate-50/90 dark:bg-[#070910] border-l-cyan-500/70 dark:border-l-cyan-500/70 ring-1 ring-cyan-500/25 shadow-xs dark:shadow-[0_4px_18px_-2px_rgba(6,182,212,0.22)]'
+                            : isCurrentFocus
+                            ? 'bg-amber-500/15 border-l-amber-400 shadow-xs'
+                            : isMatchedSeg
+                            ? 'bg-amber-500/5 border-l-amber-500/40'
+                            : 'border-l-transparent hover:border-l-cyan-500/30 hover:bg-slate-50/70 dark:hover:bg-[#07080e]'
+                        }`}
+                      >
+                        {isEditing ? (
+                          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                            <textarea
+                              value={editText}
+                              onChange={(e) => setEditText(e.target.value)}
+                              rows={3}
+                              className="w-full rounded-lg border border-cyan-500 bg-background p-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                            />
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setEditingSegmentId(null)}
+                                className="rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+                              >
+                                取消
+                              </button>
+                              <button
+                                onClick={() => saveEdit(segment.id)}
+                                className="rounded-md bg-cyan-600 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-500"
+                              >
+                                保存修改
+                              </button>
+                            </div>
+                          </div>
+                        ) : hasTranslation ? (
+                          segment.type === 'title' ? (
+                            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground pb-2 border-b border-border/40">
+                              {renderHighlightedContent(segment.translated, document.glossary, false, segment.id)}
+                            </h1>
+                          ) : segment.type === 'heading' ? (
+                            <h2 className="text-base sm:text-lg font-semibold text-foreground pt-1.5">
+                              {renderHighlightedContent(segment.translated, document.glossary, false, segment.id)}
+                            </h2>
+                          ) : (
+                            <p className="text-[14px] sm:text-[15px] leading-relaxed text-foreground">
+                              {renderHighlightedContent(segment.translated, document.glossary, false, segment.id)}
+                            </p>
+                          )
+                        ) : (
+                          <div className="flex items-center justify-between py-1.5 text-xs text-muted-foreground italic">
+                            <span>[尚未翻译]</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onTranslateSingleSegment(segment);
+                              }}
+                              className="flex items-center gap-1 rounded bg-blue-600/90 hover:bg-blue-600 px-2 py-0.5 text-[11px] font-medium text-white not-italic"
+                            >
+                              <Sparkles className="h-3 w-3" />
+                              <span>翻译本段</span>
+                            </button>
+                          </div>
                         )}
-                        {segment.userEdited && (
-                          <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400 leading-none shrink-0">
-                            已校对
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {hasTranslation && (
-                          <>
+
+                        {/* Subtle Floating Toolbar on Hover */}
+                        {hasTranslation && !isEditing && (
+                          <div className="absolute right-2 top-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-card/95 px-1.5 py-0.5 rounded-md border border-border/60 shadow-xs z-10">
+                            {(isActive || isHovered) && (
+                              <span className="text-[10px] text-cyan-400 font-medium mr-1 hidden sm:inline">
+                                ⟷ 左侧原文对齐
+                              </span>
+                            )}
+                            <span className="text-[10px] text-muted-foreground font-mono mr-1">#{index + 1}</span>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 speakText(segment.translated, document.targetLang);
                               }}
-                              className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                              className="p-1 hover:text-foreground text-muted-foreground rounded"
                               title="朗读译文"
                             >
-                              <Volume2 className="h-3.5 w-3.5" />
+                              <Volume2 className="h-3 w-3" />
                             </button>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 copyToClipboard(segment.translated, `trans-${segment.id}`);
                               }}
-                              className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                              className="p-1 hover:text-foreground text-muted-foreground rounded"
                               title="复制译文"
                             >
                               {copiedId === `trans-${segment.id}` ? (
-                                <Check className="h-3.5 w-3.5 text-emerald-400" />
+                                <Check className="h-3 w-3 text-emerald-400" />
                               ) : (
-                                <Copy className="h-3.5 w-3.5" />
+                                <Copy className="h-3 w-3" />
                               )}
                             </button>
                             <button
@@ -1010,82 +1400,212 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
                                 e.stopPropagation();
                                 startEditing(segment);
                               }}
-                              className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
-                              title="编辑校对译文"
+                              className="p-1 hover:text-foreground text-muted-foreground rounded"
+                              title="校对修改"
                             >
-                              <Edit3 className="h-3.5 w-3.5" />
+                              <Edit3 className="h-3 w-3" />
                             </button>
+                          </div>
+                        )}
+
+                        {/* Bottom Fluorescent Neon Glow Light & Underglow Effect (Only in dark mode) */}
+                        {isActive && (
+                          <>
+                            <div className="hidden dark:block absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-cyan-500/25 via-teal-500/10 to-transparent pointer-events-none rounded-b-xl" />
+                            <div className="hidden dark:block fluorescent-glow-line" />
                           </>
                         )}
-                        {!hasTranslation && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onTranslateSingleSegment(segment);
-                            }}
-                            className="flex items-center gap-1 rounded bg-blue-600/90 px-2 py-0.5 text-[11px] text-white hover:bg-blue-600"
-                          >
-                            <Sparkles className="h-3 w-3" />
-                            <span>立即翻译</span>
-                          </button>
+                        {isHovered && !isActive && (
+                          <>
+                            <div className="hidden dark:block absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-cyan-500/15 to-transparent pointer-events-none rounded-b-xl" />
+                            <div className="hidden dark:block fluorescent-glow-line-hover" />
+                          </>
                         )}
                       </div>
-                    </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                /* Card Segments Mode */
+                <div className="space-y-6">
+                  {document.segments.map((segment, index) => {
+                    const isActive = activeSegmentId === segment.id;
+                    const isHovered = hoveredSegmentId === segment.id;
+                    const isEditing = editingSegmentId === segment.id;
+                    const hasTranslation = segment.translated && segment.translated.trim().length > 0;
+                    const isMatchedSeg = matchedSegmentIds.includes(segment.id);
+                    const isCurrentFocus =
+                      matchedSegmentIds.length > 0 &&
+                      matchedSegmentIds[currentMatchIndex] === segment.id;
 
-                    {/* Content or Edit Box */}
-                    {isEditing ? (
-                      <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
-                        <textarea
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          rows={3}
-                          className="w-full rounded-lg border border-blue-500 bg-background p-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        />
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => setEditingSegmentId(null)}
-                            className="rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
-                          >
-                            取消
-                          </button>
-                          <button
-                            onClick={() => saveEdit(segment.id)}
-                            className="rounded-md bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-500"
-                          >
-                            保存修改
-                          </button>
-                        </div>
-                      </div>
-                    ) : hasTranslation ? (
+                    return (
                       <div
-                        className={`text-sm leading-relaxed ${
-                          segment.type === 'title'
-                            ? 'text-lg font-bold text-foreground'
-                            : segment.type === 'heading'
-                            ? 'text-base font-semibold text-foreground'
-                            : 'text-foreground'
+                        key={segment.id}
+                        id={`seg-item-trans-${segment.id}`}
+                        data-segment-id={segment.id}
+                        onClick={() => onSelectSegment(segment.id)}
+                        onMouseEnter={() => setHoveredSegmentId(segment.id)}
+                        onMouseLeave={() => setHoveredSegmentId(null)}
+                        className={`group relative rounded-xl p-4 transition-all duration-200 cursor-pointer overflow-hidden ${
+                          isActive
+                            ? 'bg-[#090b14] ring-1 ring-cyan-400/50 shadow-[0_8px_30px_-4px_rgba(6,182,212,0.35)]'
+                            : isHovered
+                            ? 'bg-[#070910] ring-1 ring-cyan-500/30 shadow-[0_4px_18px_-2px_rgba(6,182,212,0.22)]'
+                            : isCurrentFocus
+                            ? 'bg-amber-500/15 ring-2 ring-amber-400 shadow-md shadow-amber-500/10'
+                            : isMatchedSeg
+                            ? 'bg-amber-500/5 ring-1 ring-amber-500/30'
+                            : 'hover:bg-[#07080e] bg-card/60 border border-border/50'
                         }`}
                       >
-                        {renderHighlightedContent(segment.translated, document.glossary, false, segment.id)}
+                        {/* Segment header pill */}
+                        <div className="flex items-center justify-between gap-1.5 text-[11px] text-muted-foreground mb-2 min-w-0">
+                          <div className="flex items-center gap-1.5 font-mono flex-wrap min-w-0">
+                            <span className="shrink-0">#{index + 1}</span>
+                            {(isActive || isHovered) && (
+                              <span className="rounded-md bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-400 font-semibold leading-none shrink-0">
+                                ⟷ 左侧原文对齐
+                              </span>
+                            )}
+                            {isMatchedSeg && (
+                              <span className={`rounded-md px-1.5 py-0.5 text-[10px] leading-none shrink-0 ${
+                                isCurrentFocus
+                                  ? 'bg-amber-400 text-black font-bold'
+                                  : 'bg-amber-500/20 text-amber-300 font-medium'
+                              }`}>
+                                匹配命中
+                              </span>
+                            )}
+                            {segment.userEdited && (
+                              <span className="rounded-md bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-400 leading-none shrink-0">
+                                已校对
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {hasTranslation && (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    speakText(segment.translated, document.targetLang);
+                                  }}
+                                  className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                                  title="朗读译文"
+                                >
+                                  <Volume2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    copyToClipboard(segment.translated, `trans-${segment.id}`);
+                                  }}
+                                  className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                                  title="复制译文"
+                                >
+                                  {copiedId === `trans-${segment.id}` ? (
+                                    <Check className="h-3.5 w-3.5 text-emerald-400" />
+                                  ) : (
+                                    <Copy className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    startEditing(segment);
+                                  }}
+                                  className="rounded p-1 hover:bg-muted text-muted-foreground hover:text-foreground"
+                                  title="编辑校对译文"
+                                >
+                                  <Edit3 className="h-3.5 w-3.5" />
+                                </button>
+                              </>
+                            )}
+                            {!hasTranslation && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onTranslateSingleSegment(segment);
+                                }}
+                                className="flex items-center gap-1 rounded bg-blue-600/90 px-2 py-0.5 text-[11px] text-white hover:bg-blue-600"
+                              >
+                                <Sparkles className="h-3 w-3" />
+                                <span>立即翻译</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Content or Edit Box */}
+                        {isEditing ? (
+                          <div className="space-y-2" onClick={(e) => e.stopPropagation()}>
+                            <textarea
+                              value={editText}
+                              onChange={(e) => setEditText(e.target.value)}
+                              rows={3}
+                              className="w-full rounded-lg border border-cyan-500 bg-background p-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                            />
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setEditingSegmentId(null)}
+                                className="rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
+                              >
+                                取消
+                              </button>
+                              <button
+                                onClick={() => saveEdit(segment.id)}
+                                className="rounded-md bg-cyan-600 px-3 py-1 text-xs font-semibold text-white hover:bg-cyan-500"
+                              >
+                                保存修改
+                              </button>
+                            </div>
+                          </div>
+                        ) : hasTranslation ? (
+                          <div
+                            className={`text-sm leading-relaxed ${
+                              segment.type === 'title'
+                                ? 'text-lg font-bold text-foreground'
+                                : segment.type === 'heading'
+                                ? 'text-base font-semibold text-foreground'
+                                : 'text-foreground'
+                            }`}
+                          >
+                            {renderHighlightedContent(segment.translated, document.glossary, false, segment.id)}
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between py-2 text-xs text-muted-foreground italic">
+                            <span>此段落尚未完成翻译...</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onTranslateSingleSegment(segment);
+                              }}
+                              className="flex items-center gap-1 text-blue-400 hover:text-blue-300 not-italic font-medium"
+                            >
+                              <Sparkles className="h-3 w-3" />
+                              <span>一键翻译本段</span>
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Bottom Fluorescent Neon Glow Light & Underglow Effect */}
+                        {isActive && (
+                          <>
+                            <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-cyan-500/25 via-teal-500/10 to-transparent pointer-events-none rounded-b-xl" />
+                            <div className="fluorescent-glow-line" />
+                          </>
+                        )}
+                        {isHovered && !isActive && (
+                          <>
+                            <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-cyan-500/15 to-transparent pointer-events-none rounded-b-xl" />
+                            <div className="fluorescent-glow-line-hover" />
+                          </>
+                        )}
                       </div>
-                    ) : (
-                      <div className="flex items-center justify-between py-2 text-xs text-muted-foreground italic">
-                        <span>此段落尚未完成翻译...</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onTranslateSingleSegment(segment);
-                          }}
-                          className="flex items-center gap-1 text-blue-400 hover:text-blue-300 not-italic font-medium"
-                        >
-                          <Sparkles className="h-3 w-3" />
-                          <span>一键翻译本段</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1107,75 +1627,192 @@ export const DualPaneViewer: React.FC<DualPaneViewerProps> = ({
               </span>
             </div>
 
-            {document.segments.map((segment, index) => {
-              const isActive = activeSegmentId === segment.id;
-              const isMatchedSeg = matchedSegmentIds.includes(segment.id);
-              const isCurrentFocus =
-                matchedSegmentIds.length > 0 &&
-                matchedSegmentIds[currentMatchIndex] === segment.id;
+            {/* Interlinear Segments: Article Flow vs Boxed Cards */}
+            {presentationStyle === 'article' ? (
+              <div className="space-y-4">
+                {document.segments.map((segment, index) => {
+                  const isActive = activeSegmentId === segment.id;
+                  const isHovered = hoveredSegmentId === segment.id;
+                  const isMatchedSeg = matchedSegmentIds.includes(segment.id);
+                  const isCurrentFocus =
+                    matchedSegmentIds.length > 0 &&
+                    matchedSegmentIds[currentMatchIndex] === segment.id;
 
-              return (
-                <div
-                  key={segment.id}
-                  id={`seg-item-inter-${segment.id}`}
-                  data-segment-id={segment.id}
-                  onClick={() => onSelectSegment(segment.id)}
-                  className={`rounded-xl border p-5 transition-all cursor-pointer ${
-                    isCurrentFocus
-                      ? 'border-amber-400 bg-amber-500/10 ring-2 ring-amber-400 shadow-md shadow-amber-500/10'
-                      : isActive
-                      ? 'border-blue-500/50 bg-blue-500/5 shadow-md'
-                      : isMatchedSeg
-                      ? 'border-amber-500/40 bg-amber-500/5'
-                      : 'border-border/60 bg-card hover:border-border'
-                  }`}
-                >
-                  <div className="text-[11px] font-mono text-muted-foreground mb-2 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <span>#{index + 1} · 第 {segment.pageNumber} 页</span>
-                      {isMatchedSeg && (
-                        <span className={`rounded px-1.5 text-[10px] ${
-                          isCurrentFocus
-                            ? 'bg-amber-400 text-black font-bold'
-                            : 'bg-amber-500/20 text-amber-300 font-medium'
-                        }`}>
-                          匹配命中
-                        </span>
+                  return (
+                    <div
+                      key={segment.id}
+                      id={`seg-item-inter-${segment.id}`}
+                      data-segment-id={segment.id}
+                      onClick={() => onSelectSegment(segment.id)}
+                      onMouseEnter={() => setHoveredSegmentId(segment.id)}
+                      onMouseLeave={() => setHoveredSegmentId(null)}
+                      className={`group relative rounded-xl px-4 py-3.5 transition-all duration-200 cursor-pointer overflow-hidden border-l-2 ${
+                        isActive
+                          ? 'border-l-cyan-400 bg-[#090b14] ring-1 ring-cyan-500/40 shadow-[0_8px_30px_-4px_rgba(6,182,212,0.35)]'
+                          : isHovered
+                          ? 'border-l-cyan-500/70 bg-[#070910] ring-1 ring-cyan-500/25 shadow-[0_4px_18px_-2px_rgba(6,182,212,0.22)]'
+                          : isCurrentFocus
+                          ? 'border-l-amber-400 bg-amber-500/10 shadow-xs'
+                          : isMatchedSeg
+                          ? 'border-l-amber-500/40 bg-amber-500/5'
+                          : 'border-l-transparent hover:border-l-cyan-500/30 hover:bg-[#07080e]'
+                      }`}
+                    >
+                      {/* Segment Index & status */}
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground/80 mb-1.5 font-mono">
+                        <span className="text-[10px] text-cyan-400 font-semibold">#{index + 1} 双语对照</span>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyToClipboard(`${segment.original}\n\n${segment.translated || ''}`, segment.id);
+                            }}
+                            className="text-[10px] text-muted-foreground hover:text-foreground"
+                          >
+                            {copiedId === segment.id ? '已复制' : '复制段落'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Original line */}
+                      <div className="text-[13px] sm:text-sm text-muted-foreground/90 leading-relaxed mb-1.5">
+                        {renderHighlightedContent(segment.original, document.glossary, true, segment.id)}
+                      </div>
+
+                      {/* Translated line */}
+                      <div className="text-[14px] sm:text-[15px] font-medium text-foreground leading-relaxed">
+                        {segment.translated ? (
+                          renderHighlightedContent(segment.translated, document.glossary, false, segment.id)
+                        ) : (
+                          <div className="flex items-center justify-between text-xs text-muted-foreground italic pt-1">
+                            <span>【尚未翻译】</span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onTranslateSingleSegment(segment);
+                              }}
+                              className="text-cyan-400 hover:text-cyan-300 not-italic font-medium"
+                            >
+                              翻译本段
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom Fluorescent Neon Glow Light & Underglow Effect */}
+                      {isActive && (
+                        <>
+                          <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-cyan-500/25 via-teal-500/10 to-transparent pointer-events-none rounded-b-xl" />
+                          <div className="fluorescent-glow-line" />
+                        </>
+                      )}
+                      {isHovered && !isActive && (
+                        <>
+                          <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-cyan-500/15 to-transparent pointer-events-none rounded-b-xl" />
+                          <div className="fluorescent-glow-line-hover" />
+                        </>
                       )}
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyToClipboard(`${segment.original}\n\n${segment.translated}`, segment.id);
-                      }}
-                      className="text-xs text-muted-foreground hover:text-foreground"
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {document.segments.map((segment, index) => {
+                  const isActive = activeSegmentId === segment.id;
+                  const isHovered = hoveredSegmentId === segment.id;
+                  const isMatchedSeg = matchedSegmentIds.includes(segment.id);
+                  const isCurrentFocus =
+                    matchedSegmentIds.length > 0 &&
+                    matchedSegmentIds[currentMatchIndex] === segment.id;
+
+                  return (
+                    <div
+                      key={segment.id}
+                      id={`seg-item-inter-${segment.id}`}
+                      data-segment-id={segment.id}
+                      onClick={() => onSelectSegment(segment.id)}
+                      onMouseEnter={() => setHoveredSegmentId(segment.id)}
+                      onMouseLeave={() => setHoveredSegmentId(null)}
+                      className={`group relative rounded-xl border p-5 transition-all duration-200 cursor-pointer overflow-hidden ${
+                        isActive
+                          ? 'border-cyan-400 bg-[#090b14] ring-1 ring-cyan-500/40 shadow-[0_8px_30px_-4px_rgba(6,182,212,0.35)]'
+                          : isHovered
+                          ? 'border-cyan-500/70 bg-[#070910] ring-1 ring-cyan-500/25 shadow-[0_4px_18px_-2px_rgba(6,182,212,0.22)]'
+                          : isCurrentFocus
+                          ? 'border-amber-400 bg-amber-500/10 ring-2 ring-amber-400 shadow-md shadow-amber-500/10'
+                          : isMatchedSeg
+                          ? 'border-amber-500/40 bg-amber-500/5'
+                          : 'border-border/60 bg-card hover:border-cyan-500/40 hover:bg-[#07080e]'
+                      }`}
                     >
-                      {copiedId === segment.id ? '已复制' : '复制双语段落'}
-                    </button>
-                  </div>
+                      <div className="text-[11px] font-mono text-muted-foreground mb-2 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <span>#{index + 1} · 第 {segment.pageNumber} 页</span>
+                          {(isActive || isHovered) && (
+                            <span className="rounded-md bg-cyan-500/15 px-1.5 py-0.5 text-[10px] text-cyan-400 font-semibold leading-none shrink-0">
+                              双语板块激活
+                            </span>
+                          )}
+                          {isMatchedSeg && (
+                            <span className={`rounded px-1.5 text-[10px] ${
+                              isCurrentFocus
+                                ? 'bg-amber-400 text-black font-bold'
+                                : 'bg-amber-500/20 text-amber-300 font-medium'
+                            }`}>
+                              匹配命中
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(`${segment.original}\n\n${segment.translated}`, segment.id);
+                          }}
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          {copiedId === segment.id ? '已复制' : '复制双语段落'}
+                        </button>
+                      </div>
 
-                  {/* Original line */}
-                  <div className="text-sm text-muted-foreground/90 pb-2 mb-2 border-b border-border/40 leading-relaxed">
-                    <span className="text-xs font-semibold text-muted-foreground/60 mr-2 uppercase">
-                      原文:
-                    </span>
-                    {renderHighlightedContent(segment.original, document.glossary, true, segment.id)}
-                  </div>
+                      {/* Original line */}
+                      <div className="text-sm text-muted-foreground/90 pb-2 mb-2 border-b border-border/40 leading-relaxed">
+                        <span className="text-xs font-semibold text-muted-foreground/60 mr-2 uppercase">
+                          原文:
+                        </span>
+                        {renderHighlightedContent(segment.original, document.glossary, true, segment.id)}
+                      </div>
 
-                  {/* Translated line */}
-                  <div className="text-sm font-medium text-foreground leading-relaxed">
-                    <span className="text-xs font-semibold text-blue-400 mr-2 uppercase">
-                      译文:
-                    </span>
-                    {segment.translated ? (
-                      renderHighlightedContent(segment.translated, document.glossary, false, segment.id)
-                    ) : (
-                      <span className="text-muted-foreground italic">【未翻译】</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                      {/* Translated line */}
+                      <div className="text-sm font-medium text-foreground leading-relaxed">
+                        <span className="text-xs font-semibold text-cyan-400 mr-2 uppercase">
+                          译文:
+                        </span>
+                        {segment.translated ? (
+                          renderHighlightedContent(segment.translated, document.glossary, false, segment.id)
+                        ) : (
+                          <span className="text-muted-foreground italic">【未翻译】</span>
+                        )}
+                      </div>
+
+                      {/* Bottom Fluorescent Neon Glow Light & Underglow Effect */}
+                      {isActive && (
+                        <>
+                          <div className="absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-cyan-500/25 via-teal-500/10 to-transparent pointer-events-none rounded-b-xl" />
+                          <div className="fluorescent-glow-line" />
+                        </>
+                      )}
+                      {isHovered && !isActive && (
+                        <>
+                          <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-cyan-500/15 to-transparent pointer-events-none rounded-b-xl" />
+                          <div className="fluorescent-glow-line-hover" />
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}

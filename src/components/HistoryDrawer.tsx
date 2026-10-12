@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   X,
   History,
@@ -14,6 +14,7 @@ import {
   Edit2,
   FileDown,
   CloudCheck,
+  FileUp,
 } from 'lucide-react';
 import { TranslationDocument, DocumentCategory } from '../types';
 import { ColoredFeatureIcon } from './GeminiIcon';
@@ -27,6 +28,7 @@ interface HistoryDrawerProps {
   onToggleStar: (id: string) => void;
   onDeleteDoc: (id: string) => void;
   onRenameDoc: (id: string, newTitle: string) => void;
+  onUploadFile?: (file: File) => void;
 }
 
 export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
@@ -38,12 +40,14 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
   onToggleStar,
   onDeleteDoc,
   onRenameDoc,
+  onUploadFile,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [onlyStarred, setOnlyStarred] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
 
@@ -106,6 +110,32 @@ export const HistoryDrawer: React.FC<HistoryDrawerProps> = ({
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {/* Direct Local PDF Import Button */}
+        {onUploadFile && (
+          <div className="p-3 border-b border-border/70 bg-gradient-to-r from-blue-500/10 via-indigo-500/5 to-transparent">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white py-2 px-3 text-xs font-semibold shadow-sm transition-all active:scale-98"
+            >
+              <FileUp className="h-3.5 w-3.5" />
+              <span>+ 导入新的本地 PDF / 文档</span>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.txt,.md"
+              onChange={(e) => {
+                if (e.target.files && e.target.files[0]) {
+                  onUploadFile(e.target.files[0]);
+                  onClose();
+                  e.target.value = '';
+                }
+              }}
+              className="hidden"
+            />
+          </div>
+        )}
 
         {/* Search Bar & Category Filters */}
         <div className="border-b border-border/70 p-3 space-y-2.5">

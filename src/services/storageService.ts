@@ -56,6 +56,15 @@ export const storageService = {
     localStorage.setItem(STORAGE_KEY_ACTIVE, id);
   },
 
+  // Presentation style: 'article' (连贯文章流) | 'cards' (结构化分段卡片)
+  getPresentationStyle(): 'article' | 'cards' {
+    return (localStorage.getItem('gemini_doc_presentation_style') as any) || 'article';
+  },
+
+  setPresentationStyle(style: 'article' | 'cards'): void {
+    localStorage.setItem('gemini_doc_presentation_style', style);
+  },
+
   // Save or update single document
   updateDocument(doc: TranslationDocument): TranslationDocument[] {
     const docs = this.getDocuments();

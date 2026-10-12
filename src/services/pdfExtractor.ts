@@ -28,7 +28,7 @@ export const pdfExtractor = {
         let totalTextLength = 0;
         let firstPageImageBase64 = '';
 
-        for (let i = 1; i <= Math.min(pageCount, 15); i++) {
+        for (let i = 1; i <= Math.min(pageCount, 50); i++) {
           const page = await pdfDoc.getPage(i);
           const textContent = await page.getTextContent();
 
@@ -47,16 +47,37 @@ export const pdfExtractor = {
             }
           }
 
-          // Extract and group text items into logical paragraphs
+          // Extract and group text items into cohesive, readable paragraphs
           let currentParagraph = '';
+          let lastY: number | null = null;
+          let lastHeight = 12;
           const items = textContent.items || [];
 
           for (const item of items) {
             const str = (item.str || '').trim();
             if (!str) continue;
 
-            if (currentParagraph && str.match(/^[A-Z0-9\u4e00-\u9fa5]/) && currentParagraph.endsWith('.')) {
-              // New sentence/paragraph break
+            const transform = item.transform || [];
+            const currentY = typeof transform[5] === 'number' ? transform[5] : null;
+            const currentHeight = item.height || 12;
+
+            // Check if vertical Y offset indicates a true paragraph break
+            const isSignificantVerticalGap =
+              lastY !== null &&
+              currentY !== null &&
+              Math.abs(currentY - lastY) > Math.max(lastHeight, currentHeight) * 1.8;
+
+            // Break into new paragraph if significant gap or long paragraph ending with period
+            const shouldBreakParagraph =
+              currentParagraph.length > 100 &&
+              (isSignificantVerticalGap ||
+                (currentParagraph.endsWith('.') &&
+                  str.match(/^[A-Z0-9\u4e00-\u9fa5]/) &&
+                  lastY !== null &&
+                  currentY !== null &&
+                  Math.abs(currentY - lastY) > 15));
+
+            if (shouldBreakParagraph && currentParagraph.trim()) {
               segments.push({
                 id: `seg-p${i}-${segments.length + 1}`,
                 pageNumber: i,
@@ -66,8 +87,12 @@ export const pdfExtractor = {
               });
               currentParagraph = str;
             } else {
+              // Same paragraph: join with space if needed
               currentParagraph = currentParagraph ? `${currentParagraph} ${str}` : str;
             }
+
+            lastY = currentY;
+            lastHeight = currentHeight;
             totalTextLength += str.length;
           }
 
@@ -82,8 +107,8 @@ export const pdfExtractor = {
           }
         }
 
-        // If total extracted text is very sparse (< 80 characters for multi-page doc), it is likely a scanned image PDF!
-        const isScannedImageDoc = totalTextLength < 100;
+        // If total extracted text is virtually zero (< 30 characters for multi-page doc), it is a scanned image PDF
+        const isScannedImageDoc = totalTextLength < 30;
 
         return {
           title: fileName,

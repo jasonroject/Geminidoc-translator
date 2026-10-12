@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Moon,
   Sun,
   FileDown,
+  FileUp,
   Layers,
   FileText,
   Sliders,
@@ -27,6 +28,7 @@ import {
   SupportedLanguage,
   ViewerLayoutMode,
   TranslationEngineConfig,
+  PresentationStyle,
 } from '../types';
 import { exportService } from '../services/exportService';
 import { GeminiBrandBadge, ColoredFeatureIcon, GeminiStarIcon } from './GeminiIcon';
@@ -48,6 +50,8 @@ interface HeaderProps {
   onOpenEngineModal: () => void;
   viewerMode: ViewerLayoutMode;
   onChangeViewerMode: (mode: ViewerLayoutMode) => void;
+  presentationStyle?: PresentationStyle;
+  onChangePresentationStyle?: (style: PresentationStyle) => void;
   syncScroll: boolean;
   onToggleSyncScroll: () => void;
   isTranslating: boolean;
@@ -56,6 +60,7 @@ interface HeaderProps {
   activeEngine: TranslationEngineConfig;
   isSearchOpen?: boolean;
   onToggleSearch?: () => void;
+  onUploadFile?: (file: File) => void;
 }
 
 const LANGUAGES: { code: SupportedLanguage; label: string; short: string }[] = [
@@ -88,6 +93,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenEngineModal,
   viewerMode,
   onChangeViewerMode,
+  presentationStyle = 'article',
+  onChangePresentationStyle,
   syncScroll,
   onToggleSyncScroll,
   isTranslating,
@@ -96,9 +103,11 @@ export const Header: React.FC<HeaderProps> = ({
   activeEngine,
   isSearchOpen = false,
   onToggleSearch,
-}) => {
+  onUploadFile,
+}: HeaderProps) => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const translatedSegmentsCount = currentDoc.segments.filter((s) => s.translated && s.translated.trim()).length;
   const totalSegmentsCount = currentDoc.segments.length;
@@ -111,8 +120,8 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 w-full border-b border-border/80 bg-card/95 backdrop-blur-md transition-colors shadow-2xs">
       {/* Primary Top Bar */}
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-3 sm:px-6 gap-2">
-        {/* Left Section: Gemini Brand & Document Selector */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 max-w-[55%] sm:max-w-none">
+        {/* Left Section: Gemini Brand & Document Selector & Direct PDF Import */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 max-w-[60%] sm:max-w-none">
           {/* Official Gemini App Icon with Colored Gradient Background */}
           <div className="flex items-center gap-2 shrink-0">
             <GeminiBrandBadge size="md" glow={true} />
@@ -131,7 +140,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Current Document Selector Capsule - Responsive & Truncating Gracefully */}
           <button
             onClick={onOpenHistoryDrawer}
-            className="group flex items-center gap-1.5 rounded-full border border-border/80 bg-background/60 hover:bg-background hover:border-blue-500/40 px-2.5 py-1 text-left transition-all min-w-0 max-w-full sm:max-w-xs md:max-w-sm"
+            className="group flex items-center gap-1.5 rounded-full border border-border/80 bg-background/60 hover:bg-background hover:border-blue-500/40 px-2.5 py-1 text-left transition-all min-w-0 max-w-[150px] sm:max-w-xs md:max-w-sm"
             title={`当前文档: ${currentDoc.title}\n点击切换历史文档或分类`}
           >
             <ColoredFeatureIcon color="blue" size="sm">
@@ -148,6 +157,35 @@ export const Header: React.FC<HeaderProps> = ({
 
             <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0 group-hover:text-foreground transition-transform" />
           </button>
+
+          {/* Primary High-Visibility "导入本地 PDF" Action Button */}
+          {onUploadFile && (
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 rounded-full border border-cyan-500/50 bg-cyan-950/40 hover:bg-cyan-900/50 px-2.5 sm:px-3.5 py-1 text-xs font-semibold text-cyan-300 hover:text-white transition-all shadow-[0_0_15px_rgba(6,182,212,0.25)] shrink-0 active:scale-98 cursor-pointer"
+                title="直接从本地电脑选择 PDF 文件进行双语翻译（原生解析排版，免复杂 OCR）"
+              >
+                <FileUp className="h-3.5 w-3.5 text-cyan-400" />
+                <span>📥 导入本地 PDF</span>
+                <span className="hidden md:inline text-[10px] text-cyan-400/80 font-normal">
+                  (免OCR)
+                </span>
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.txt,.md"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    onUploadFile(e.target.files[0]);
+                    e.target.value = '';
+                  }
+                }}
+                className="hidden"
+              />
+            </>
+          )}
         </div>
 
         {/* Center Section: Language & Engine Selector (Desktop & Tablet) */}
@@ -352,21 +390,29 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onStartTranslateAll}
             disabled={isTranslating}
-            className="flex items-center gap-1.5 rounded-xl px-3 sm:px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-500/20 hover:opacity-95 disabled:opacity-50 transition-all shrink-0 active:scale-98"
+            className="flex items-center gap-1.5 rounded-xl px-3 sm:px-4 py-1.5 text-xs font-semibold text-white shadow-md shadow-blue-500/25 hover:opacity-95 disabled:opacity-60 transition-all shrink-0 active:scale-98 cursor-pointer"
             style={{
               background: 'linear-gradient(135deg, #1A73E8 0%, #4F46E5 35%, #9333EA 70%, #EC4899 100%)',
             }}
+            title="一键翻译全文：无需一段段点，自动翻译整篇文档的所有内容"
           >
             <GeminiStarIcon size={14} fill="#FFFFFF" className={isTranslating ? 'animate-spin' : ''} />
-            <span>{isTranslating ? '翻译中...' : translationPercentage >= 100 ? '重新翻译' : '开始翻译'}</span>
+            <span>
+              {isTranslating
+                ? `正在翻译全文 ${translationPercentage}%`
+                : translationPercentage >= 100
+                ? '重新翻译全文'
+                : '⚡ 一键翻译全文'}
+            </span>
           </button>
         </div>
       </div>
 
       {/* Secondary Bar: Gemini-Style Colored Feature Chips & Layout Switches */}
       <div className="mx-auto flex h-10 max-w-7xl items-center justify-between border-t border-border/60 px-3 sm:px-6 text-xs text-muted-foreground bg-background/40 overflow-x-auto no-scrollbar gap-2">
-        {/* Left: View Mode Segmented Controls */}
-        <div className="flex items-center gap-1 shrink-0">
+        {/* Left: View Mode & Presentation Style Segmented Controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Dual/Interlinear/Single Layout Mode */}
           <div className="flex items-center rounded-lg border border-border/70 bg-card/60 p-0.5">
             <button
               onClick={() => onChangeViewerMode('side_by_side')}
@@ -410,6 +456,36 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           </div>
 
+          {/* Presentation Style: Continuous Article Flow vs Fragmented Cards */}
+          {onChangePresentationStyle && (
+            <div className="flex items-center rounded-lg border border-purple-500/30 bg-card/70 p-0.5" title="排版展示模式">
+              <button
+                onClick={() => onChangePresentationStyle('article')}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                  presentationStyle === 'article'
+                    ? 'bg-purple-500/20 text-purple-300 font-semibold shadow-2xs'
+                    : 'hover:bg-accent text-muted-foreground'
+                }`}
+                title="连贯文章流：自然段落排版，无割裂卡片框，像阅读真实文献一样连贯通读"
+              >
+                <BookOpen className="h-3 w-3" />
+                <span>连贯文章</span>
+              </button>
+              <button
+                onClick={() => onChangePresentationStyle('cards')}
+                className={`flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium transition-colors ${
+                  presentationStyle === 'cards'
+                    ? 'bg-purple-500/20 text-purple-300 font-semibold shadow-2xs'
+                    : 'hover:bg-accent text-muted-foreground'
+                }`}
+                title="逐段卡片：带段落编号与细粒度校对卡片模式"
+              >
+                <Layers className="h-3 w-3" />
+                <span>逐段卡片</span>
+              </button>
+            </div>
+          )}
+
           {/* Sync Scroll Toggle */}
           {viewerMode === 'side_by_side' && (
             <button
@@ -429,6 +505,20 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Gemini Colored Tool Chips (有底色的专业功能图标芯片) */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Direct PDF Import Chip */}
+          {onUploadFile && (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] font-semibold bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 transition-all shrink-0 active:scale-98 cursor-pointer shadow-2xs"
+              title="直接打开电脑上的本地 PDF 文件进行翻译（免OCR，直接读取文字排版）"
+            >
+              <ColoredFeatureIcon color="blue" size="sm">
+                <FileUp className="h-3 w-3 text-cyan-400" />
+              </ColoredFeatureIcon>
+              <span>直接导入PDF (免OCR)</span>
+            </button>
+          )}
+
           {/* AI Smart Executive Summary Chip */}
           <button
             onClick={onOpenSummaryModal}
@@ -445,12 +535,12 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenOcrModal}
             className="flex items-center gap-1.5 rounded-lg px-1.5 sm:px-2 py-1 text-[11px] font-medium hover:bg-accent/80 transition-colors text-foreground"
-            title="扫描件与图片智能 OCR 识别"
+            title="针对拍照纸质文档或纯图片提取文字 (OCR)"
           >
             <ColoredFeatureIcon color="indigo" size="sm">
               <Camera className="h-3 w-3" />
             </ColoredFeatureIcon>
-            <span className="hidden lg:inline">OCR识别</span>
+            <span className="hidden lg:inline">截图/拍照识别</span>
           </button>
 
           {/* Glossary Chip */}
@@ -474,12 +564,12 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={onOpenBatchModal}
             className="flex items-center gap-1.5 rounded-lg px-1.5 sm:px-2 py-1 text-[11px] font-medium hover:bg-accent/80 transition-colors text-foreground"
-            title="批量上传与自动化归档"
+            title="批量导入多个 PDF/文档文件"
           >
             <ColoredFeatureIcon color="purple" size="sm">
               <FolderSync className="h-3 w-3" />
             </ColoredFeatureIcon>
-            <span className="hidden xl:inline">批量归档</span>
+            <span className="hidden xl:inline">批量导入</span>
           </button>
 
           {/* History Library Chip */}
